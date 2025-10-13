@@ -2,7 +2,7 @@
 // https://orm.drizzle.team/docs/sql-schema-declaration
 
 import { sql } from "drizzle-orm";
-import { index, pgTableCreator } from "drizzle-orm/pg-core";
+import { index, pgEnum, pgTableCreator } from "drizzle-orm/pg-core";
 import { text, timestamp, boolean } from "drizzle-orm/pg-core";
 
 /**
@@ -12,6 +12,11 @@ import { text, timestamp, boolean } from "drizzle-orm/pg-core";
  * @see https://orm.drizzle.team/docs/goodies#multi-project-schema
  */
 export const createTable = pgTableCreator((name) => `tkd-core_${name}`);
+export const attendanceStatus = pgEnum("attendance_status", [
+  "present",
+  "absent",
+  "excused",
+]);
 
 export const posts = createTable(
   "post",
@@ -127,3 +132,132 @@ export const invitation = createTable("invitation", {
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
 });
+
+export const ranks = createTable("ranks", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  name: d.varchar({ length: 250 }).notNull().unique(),
+  prevRank: d.varchar({ length: 250 }).notNull(),
+  nextRank: d.varchar({ length: 250 }).notNull(),
+}));
+
+export const rankRequirement = createTable("rankRequirement", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  rankId: d
+    .integer()
+    .notNull()
+    .references(() => ranks.id, { onDelete: "cascade" }),
+  name: d.varchar({ length: 250 }).notNull(),
+  levelNeeded: d.smallint().notNull(), // to pass to the next rank
+  isTimeRequired: d.boolean().default(false),
+}));
+
+export const rankPromotion = createTable("rankPromotion", (d) => ({
+  fromRank: d
+    .integer()
+    .notNull()
+    .references(() => ranks.id, { onDelete: "cascade" }),
+  toRank: d
+    .integer()
+    .notNull()
+    .references(() => ranks.id, { onDelete: "cascade" }),
+  success: d.boolean(),
+  observations: d.text(),
+  coachId: d
+    .integer()
+    .notNull()
+    .references(() => persons.id, { onDelete: "cascade" }),
+  studentId: d
+    .integer()
+    .notNull()
+    .references(() => persons.id, { onDelete: "cascade" }),
+}));
+
+export const persons = createTable("persons", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  firstName: d.varchar({ length: 200 }).notNull(),
+  height: d.bigint({ mode: "number" }).notNull(),
+  weight: d.bigint({ mode: "number" }).notNull(),
+  lastName: d.varchar({ length: 200 }).notNull(),
+  currentRank: d
+    .integer()
+    .notNull()
+    .references(() => ranks.id, { onDelete: "cascade" }),
+  createdAt: d.timestamp("created_at").defaultNow().notNull(),
+  userId: d
+    .text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  isCoach: d.boolean().notNull().default(false),
+  birthDate: d.timestamp("birthDate").notNull(),
+}));
+
+export const groups = createTable("groups", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  name: d.varchar({ length: 200 }).notNull(),
+}));
+
+export const personGroup = createTable("personGroup", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  personId: d
+    .integer()
+    .notNull()
+    .references(() => persons.id, { onDelete: "cascade" }),
+  groupId: d
+    .integer()
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  createdAt: d.timestamp("created_at").defaultNow().notNull(),
+  removedAt: d.timestamp("removed_at"),
+}));
+
+export const classSession = createTable("classSession", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  startTime: d.timestamp("start_time").notNull(),
+  endTime: d.timestamp("end_time").notNull(),
+  coachId: d
+    .integer("coach_id")
+    .notNull()
+    .references(() => persons.id, { onDelete: "cascade" }),
+}));
+
+export const classSessionGroup = createTable("classSessionGroup", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  sessionId: d
+    .integer("session_id")
+    .notNull()
+    .references(() => classSession.id, { onDelete: "cascade" }),
+  groupId: d
+    .integer("group_id")
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+}));
+
+export const attendance = createTable("attendance", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  sessionId: d
+    .integer("session_id")
+    .notNull()
+    .references(() => classSession.id, { onDelete: "cascade" }),
+  personId: d
+    .integer("person_id")
+    .notNull()
+    .references(() => persons.id, { onDelete: "cascade" }),
+  status: attendanceStatus("status").notNull(),
+  description: d.text(),
+}));
+
+export const rankRequirementPerson = createTable(
+  "rankRequirementPerson",
+  (d) => ({
+    id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+    requirementId: d
+      .integer("requirement_id")
+      .notNull()
+      .references(() => rankRequirement.id, { onDelete: "cascade" }),
+    personId: d
+      .integer("person_id")
+      .notNull()
+      .references(() => persons.id, { onDelete: "cascade" }),
+    level: d.smallint().notNull(),
+  }),
+);
